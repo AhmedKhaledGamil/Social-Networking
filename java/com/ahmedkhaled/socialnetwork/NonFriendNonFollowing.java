@@ -4,6 +4,8 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
 import android.util.Log;
 import android.view.View;
 import android.widget.ImageView;
@@ -16,8 +18,13 @@ import com.androidnetworking.error.ANError;
 import com.androidnetworking.interfaces.JSONObjectRequestListener;
 import com.squareup.picasso.Picasso;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+
+import java.util.ArrayList;
+
+import static android.widget.Toast.LENGTH_SHORT;
 
 public class NonFriendNonFollowing extends AppCompatActivity {
 
@@ -29,6 +36,10 @@ public class NonFriendNonFollowing extends AppCompatActivity {
     String profilePicture;
     String coverPhoto;
     String bio;
+
+    public ArrayList<Post> dataarr = new ArrayList<Post>();
+    String TAG = "Success";
+    RecyclerView userPosts;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -42,6 +53,7 @@ public class NonFriendNonFollowing extends AppCompatActivity {
         Intent intent = getIntent();
         userID = intent.getStringExtra("_id");
         loadUserData();
+        loadUserPosts();
     }
 
     public void loadUserData()
@@ -190,5 +202,94 @@ public class NonFriendNonFollowing extends AppCompatActivity {
         super.onBackPressed();
         Intent intent = new Intent(getApplicationContext(),AllMembers.class);
         startActivity(intent);
+    }
+
+    public void loadUserPosts()
+    {
+        //userID = "5afa2cc88024b6bbc5d01fad";
+        AndroidNetworking.get("http://64.52.86.76:5000/api/post/getUserPosts/"+ userID)
+                .setTag("newsfeed")
+                .setPriority(Priority.HIGH)
+                .build()
+                .getAsJSONObject(new JSONObjectRequestListener() {
+                    @Override
+                    public void onResponse(JSONObject response) {
+                        // do anything with response
+                        try {
+                            JSONObject arr = new JSONObject(response.toString());
+                            String count= arr.getString("count");
+                            int num_of_posts = Integer.parseInt(count);
+                            if(num_of_posts==0){
+                                String mess =response.getString("message");
+                                Toast.makeText(getApplicationContext(),mess, LENGTH_SHORT).show();
+                                return;
+                            }
+
+                            Log.i("postsResp", response.toString());
+                            Log.i("posts_num", "onResponse: "+num_of_posts);
+
+                            JSONArray posts = arr.getJSONArray("posts");
+                            for (int i = 0; i < num_of_posts; i++)
+                            {
+                                Post post = new Post();
+                                JSONObject postObj = posts.getJSONObject(i);
+                                post.postID = postObj.getString("_id");
+                                // post.userID = postObj.getString("user");
+                                post.context = postObj.getString("text");
+                                post.postPic = postObj.getString("image");
+
+                                JSONObject userObj = postObj.getJSONObject("user");
+                                post.userID=userObj.getString("_id");
+                                post.userName=userObj.getString("name");
+                                post.userPic=userObj.getString("profileImage");
+
+                                JSONArray likes = postObj.getJSONArray("likes");
+                                int num_of_likes = likes.length();
+                                post.numOfLikes=num_of_likes;
+
+                                for (int y=0;y<num_of_likes;y++){
+                                    JSONObject likeObj = likes.getJSONObject(y);
+                                    String liker_id = likeObj.getString("_id");
+                                    post.likers_id.add(liker_id);
+                                }
+
+                                JSONArray comments = postObj.getJSONArray("comments");
+                                int num_of_comments = comments.length();
+
+                                Log.i("commentsNum", String.valueOf(num_of_comments));
+
+                                for (int y=0;y<num_of_comments;y++){
+                                    Comment comment =  new  Comment();
+                                    JSONObject commentObj = comments.getJSONObject(y);
+                                    comment.commentID= commentObj.getString("_id");
+                                    comment.commentText = commentObj.getString("text");
+
+                                    Log.i("comment", comment.commentText);
+                                    JSONObject commentList = commentObj.getJSONObject("user");
+
+                                    comment.commenterID = commentList.getString("_id");
+                                    comment.commenterName = commentList.getString("name");
+                                    comment.commenterProfilePic= commentList.getString("profileImage");
+
+                                    post.post_comments.add(comment);
+                                }
+                                dataarr.add(post);
+                            }
+                            userPosts = findViewById(R.id.userPostsRecyclerViewID);
+                            LinearLayoutManager llm = new LinearLayoutManager(NonFriendNonFollowing.this);
+                            llm.setOrientation(LinearLayoutManager.VERTICAL);
+                            userPosts.setLayoutManager(llm);
+                            PostsAdapter adapter = new PostsAdapter(NonFriendNonFollowing.this,dataarr);
+                            userPosts.setAdapter(adapter);
+                        } catch (JSONException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                    @Override
+                    public void onError(ANError error) {
+                        // handle error
+                        Log.i(TAG, "onError: "+error.toString());
+                    }
+                });
     }
 }
